@@ -22,10 +22,20 @@ jobs:
       - name: Set up Homebrew
         uses: Homebrew/actions/setup-homebrew@2026.10.26.1
 
+      - name: Tap this repo
+        run: |
+          set -euo pipefail
+          # `brew audit`/`livecheck` reject a file path and require a formula
+          # NAME, so the tap must be installed on the runner first. Tap the
+          # canonical remote (a local-path tap of this same repo is rejected as a
+          # "remote mismatch") -- same content, and it mirrors a real user's path.
+          brew tap frank321/bushpilot
+          brew trust frank321/bushpilot
+
       - name: brew style
         run: brew style Formula/bushpilot.rb
 
       - name: brew audit
         # --online requires network access to the release URL + homepage; it is
         # what catches a stale/broken sha256 or url before users hit it.
-        run: brew audit --strict --online Formula/bushpilot.rb
+        run: brew audit --strict --online frank321/bushpilot/bushpilot
