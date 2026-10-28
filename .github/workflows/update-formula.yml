@@ -42,12 +42,14 @@ jobs:
       - name: Set up Homebrew
         uses: Homebrew/actions/setup-homebrew@2026.10.26.1
 
-      - name: Tap this checkout
+      - name: Tap this repo
         run: |
           set -euo pipefail
-          # The checkout IS the tap, but it isn't tapped on the runner, so the
-          # formula isn't addressable by name yet. Tap the local path first.
-          brew tap frank321/bushpilot "$PWD"
+          # `brew tap <name> <local-path>` is rejected when <name> already maps
+          # to a GitHub remote ("remote mismatch") -- which it does here, since
+          # this repo IS that tap. Tap the canonical remote instead: same content,
+          # and it exercises the exact path a real user takes.
+          brew tap frank321/bushpilot
           brew trust frank321/bushpilot
 
       - name: Run livecheck
