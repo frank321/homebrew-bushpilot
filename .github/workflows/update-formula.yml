@@ -1,0 +1,114 @@
+name: Update formula
+
+# Zero-secret auto-bump: this workflow runs inside the tap repo and pushes back
+# to the tap repo's *own* git history using the built-in GITHUB_TOKEN, so no PAT
+# or GitHub App is required.
+#
+# How it works: the formula's livecheck block points at the upstream project's
+# GitHub Releases. `brew livecheck` reports the newest upstream tag; if it is
+# newer than the version baked into the formula's url, we recompute the asset's
+# sha256, rewrite url/sha256, and commit the bump here. Users then get it via
+# `brew update && brew upgrade bushpilot`.
+#
+# Triggered on a schedule (safety net, up to ~6h lag) and manually. For instant
+# bumps instead, add a repository_dispatch trigger here plus a dispatch step in
+# the upstream project's release.yml (needs a cross-repo PAT or GitHub App
+# token, since the default GITHUB_TOKEN cannot push to another repo).
+
+on:
+  schedule:
+    # Every 6 hours. GitHub cron is UTC; this is not a correctness-critical job,
+    # so drift/delay is fine.
+    - cron: "17 */6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write   # push the bump commit back to this tap repo
+
+concurrency:
+  group: update-formula
+  cancel-in-progress: false
+
+jobs:
+  bump:
+    runs-on: macos-14   # arm64 runner; the formula is macOS/arm64-only
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Default token: this workflow only ever pushes to its own repo, so no
+          # cross-repo secret is needed.
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Homebrew
+        uses: Homebrew/actions/setup-homebrew@master
+
+      - name: Tap this checkout
+        run: |
+          set -euo pipefail
+          # The checkout IS the tap, but it isn't tapped on the runner, so the
+          # formula isn't addressable by name yet. Tap the local path first.
+          brew tap frank321/bushpilot "$PWD"
+          brew trust frank321/bushpilot
+
+      - name: Run livecheck
+        id: livecheck
+        run: |
+          set -euo pipefail
+          # Address the formula by fully-qualified name (path form is disallowed
+          # in current Homebrew). GitHub's API needs a release to exist: with
+          # none yet, livecheck reports status=error -- that is NOT a failure,
+          # just "nothing to compare", so treat it as not-stale.
+          livecheck_json="$(brew livecheck --json frank321/bushpilot/bushpilot)"
+          echo "livecheck: $livecheck_json"
+          latest="$(printf '%s' "$livecheck_json" | python3 -c '
+          import json, sys
+          data = json.load(sys.stdin)
+          entry = data[0] if data else {}
+          if entry.get("status") in ("error", "skipped") or "version" not in entry:
+              print("")
+          else:
+              print(entry["version"]["latest"])
+          ')"
+          current="$(grep -oE '/releases/download/v[0-9.]+/' Formula/bushpilot.rb | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1 || true)"
+          echo "latest='${latest}' current='${current}'"
+          echo "latest=${latest}"   >> "$GITHUB_OUTPUT"
+          echo "current=${current}" >> "$GITHUB_OUTPUT"
+          if [ -z "$latest" ] || [ "$latest" = "$current" ]; then
+            echo "stale=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "stale=true"  >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Bump formula to latest upstream release
+        if: steps.livecheck.outputs.stale == 'true'
+        env:
+          HOMEBREW_NO_AUTO_UPDATE: "1"
+          HOMEBREW_NO_INSTALL_FROM_API: "1"
+        run: |
+          set -euo pipefail
+          version="${{ steps.livecheck.outputs.latest }}"
+          url="https://github.com/frank321/bushpilot/releases/download/v${version}/bushpilot.zip"
+
+          # Compute the asset's checksum directly from the release asset (this is
+          # what `brew bump-formula-pr` would do; doing it inline keeps the whole
+          # bump in one workflow with no PR round-trip).
+          sha="$(curl -fsSL "$url" | shasum -a 256 | awk '{print $1}')"
+
+          # Rewrite the url + sha256 literal lines in the formula.
+          url="$url" sha="$sha" python3 - <<'PY'
+          import os, re, pathlib
+          p = pathlib.Path("Formula/bushpilot.rb")
+          text = p.read_text()
+          text = re.sub(r'url "https://github\.com/frank321/bushpilot/releases/download/v[^"]+"',
+                        'url "%s"' % os.environ["url"], text)
+          text = re.sub(r'sha256 "[0-9a-f]{64}"',
+                        'sha256 "%s"' % os.environ["sha"], text)
+          p.write_text(text)
+          PY
+
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git diff --stat
+          git add Formula/bushpilot.rb
+          git commit -m "bushpilot ${version}"
+          git push

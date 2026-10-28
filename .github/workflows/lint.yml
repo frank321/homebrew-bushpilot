@@ -1,0 +1,31 @@
+name: Lint formula
+
+on:
+  push:
+    paths:
+      - "Formula/*.rb"
+      - ".github/workflows/lint.yml"
+  pull_request:
+    paths:
+      - "Formula/*.rb"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: macos-14   # arm64, matching the formula's declared deps
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Homebrew
+        uses: Homebrew/actions/setup-homebrew@master
+
+      - name: brew style
+        run: brew style Formula/bushpilot.rb
+
+      - name: brew audit
+        # --online requires network access to the release URL + homepage; it is
+        # what catches a stale/broken sha256 or url before users hit it.
+        run: brew audit --strict --online Formula/bushpilot.rb
