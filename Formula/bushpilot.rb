@@ -16,8 +16,8 @@
 class Bushpilot < Formula
   desc "Local LLM cockpit for Apple Silicon: hardware-aware MLX model server"
   homepage "https://github.com/frank321/bushpilot"
-  url "https://github.com/frank321/bushpilot/releases/download/v0.1.0/bushpilot.zip"
-  sha256 "0b120b6cb372e508b7c7aab456121c0bacbd36a44a916e52c48feab9fd0af86f"
+  url "https://github.com/frank321/bushpilot/releases/download/v0.1.1/bushpilot.zip"
+  sha256 "ecdfeb6aae8ace55a2ae96ecd9ac6186c6e23cd55c967c0ff1787ffc84f2a1a6"
   license "MIT"
 
   # livecheck lets `brew livecheck` (and the tap's scheduled bump workflow) find

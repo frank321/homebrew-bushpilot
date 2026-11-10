@@ -31,7 +31,7 @@ concurrency:
 
 jobs:
   bump:
-    runs-on: macos-14   # arm64 runner; the formula is macOS/arm64-only
+    runs-on: macos-latest   # arm64 runner; the formula is macOS/arm64-only
     steps:
       - uses: actions/checkout@v4
         with:

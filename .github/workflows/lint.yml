@@ -15,7 +15,7 @@ permissions:
 
 jobs:
   audit:
-    runs-on: macos-14   # arm64, matching the formula's declared deps
+    runs-on: macos-latest   # arm64, matching the formula's declared deps
     steps:
       - uses: actions/checkout@v4
 
